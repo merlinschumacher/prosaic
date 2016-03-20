@@ -19,6 +19,7 @@ import sys
 from os.path import join, expanduser, exists
 import nltk
 from prosaic.util import match, invert, first, compose, second, some, is_empty, last, find_first
+from prosaic.cfg import LANGUAGE
 
 # We have to pause our imports, here, to do some NLTK prep. We can't import
 # certain things until we've downloaded raw corpora and other data, so we do so
@@ -34,7 +35,6 @@ if not exists(NLTK_DATA_PATH):
     for datum in NLTK_DATA:
         nltk.download(datum)
 
-from nltk.stem.snowball import EnglishStemmer
 import nltk.chunk as chunk
 from nltk.corpus import cmudict
 
@@ -42,14 +42,25 @@ DIVIDER_TAG = ':' # nltk uses this to tag for ; and :
 
 # Set up some state that we'll use in the functions throughout this file:
 # TODO consider making a class that has modular stemmer/tokenizer
-stemmer = EnglishStemmer()
-tokenizer = nltk.data.load("tokenizers/punkt/english.pickle")
-cmudict_dict = cmudict.dict()
+if LANGUAGE == "english":
+    from nltk.stem.snowball import EnglishStemmer
+    stemmer = EnglishStemmer()
+    tokenizer = nltk.data.load("tokenizers/punkt/english.pickle")
+    cmudict_dict = cmudict.dict()
 
-# Some useful regexes:
-vowel_re = re.compile("[aeiouAEIOU]")
-vowel_phoneme_re = re.compile("AA|AE|AH|AO|AW|AY|EH|EY|ER|IH|IY|OW|OY|UH|UW")
-consonant_phoneme_re = re.compile("^(?:B|D|G|JH|L|N|P|S|T|V|Y|ZH|CH|DH|F|HH|K|M|NG|R|SH|TH|W|Z)")
+    # Some useful regexes:
+    vowel_re = re.compile("[aeiouAEIOU]")
+    vowel_phoneme_re = re.compile("AA|AE|AH|AO|AW|AY|EH|EY|ER|IH|IY|OW|OY|UH|UW")
+    consonant_phoneme_re = re.compile("^(?:B|D|G|JH|L|N|P|S|T|V|Y|ZH|CH|DH|F|HH|K|M|NG|R|SH|TH|W|Z)")
+elif LANGUAGE == "german":
+    from nltk.stem.snowball import GermanStemmer
+    stemmer = GermanStemmer()
+    tokenizer = nltk.data.load("tokenizers/punkt/german.pickle")
+    cmudict_dict = cmudict.dict()
+    
+    vowel_re = re.compile("[aeiouAEIOUÖÜÄYy]")
+    vowel_phoneme_re = re.compile("AA|AI|AO|AU|AY|EE|EI|EU|EY|IE|II|OO|OU|OY|UI|UO|UU|ÄU|AE|OE|UE")
+    consonant_phoneme_re = re.compile("^(?:B|D|G|JH|L|N|P|S|T|V|Y|ZH|CH|DH|F|HH|K|M|NG|R|SH|TH|W|V|Z|SCH)")
 
 # Helper predicates:
 is_vowel = partial(match, vowel_re)
@@ -58,6 +69,8 @@ is_consonant_phoneme = partial(match, consonant_phoneme_re)
 
 def word_to_phonemes(word):
     result = cmudict_dict.get(word.lower(), None)
+    if LANGUAGE == "german":
+        print("This most likely generates rubbish. There is no german phoneme database implemented")
     if result is None:
         # TODO I don't really like this. Should at least return None.
         return []
@@ -150,7 +163,10 @@ def rhyme_sound(sentence):
 
     return "".join(phonemes[-3:])
 
-consonant_re = re.compile("(SH|CH|TH|B|D|G|L|N|P|S|T|V|Y|F|K|M|NG|R|W|Z)")
+if LANGUAGE == "english":
+    consonant_re = re.compile("(SH|CH|TH|B|D|G|L|N|P|S|T|V|Y|F|K|M|NG|R|W|Z)")
+elif LANGUAGE == "german":
+    consonant_re = re.compile("(B|C|D|G|H|L|M|N|P|Q|R|S|T|V|X|F|K|W|Z)")
 
 def has_alliteration(sentence):
     ws = words(sentence)
@@ -174,3 +190,92 @@ def has_alliteration(sentence):
                 last_phoneme = phoneme
     return False
 
+# Function taken from: https://github.com/tradloff/haiku
+def count_syllables_in_word_german (word):
+    VOWELS_DE = "aeiouyäöü"
+#      Vokale der deutschen Sprache, einschliesslich "y" und Umlaute.
+       
+    ONE_SYLLABLE_COMBINATIONS = (
+            "aa", "ai", "ao", "au", "ay",
+            "ee", "ei", "eu", "ey",
+            "ie", "ii",
+            "oo", "ou", "oy",
+            "ui", "uo", "uu",
+            "\xe4u",
+            "ae", "oe", "ue"
+    )
+    SYL_DIGITS_REGEXP = re.compile(r"\d+")
+    SYL_QU_REGEXP = re.compile(r"qu[aeiouäöüy]")
+    SYL_Y_REGEXP = re.compile(r"y[aeiouäöü]")
+    SYLLABLE_COUNT_EXCEPTIONS = {"Pietät": 3, "McDonald's": 3, "T-Shirt": 2, "orange": 2}
+    #Rekursive Funktion, die die Zahl der Silben fuer ein  deutsches Wort zurueckgibt.
+    
+
+    # Manchmal gibt libleipzig merere Worte als ein einzelnes zurueck
+    if " " in word:
+            return sum([countSyllables(w) for w in word.split()])
+
+    # Sonderfall: Bindestrich
+    word = word.strip("-")
+    if "-" in word:
+            return sum([countSyllables(w) for w in word.split("-")])
+
+    def __sylCount(charList):
+#            Rekursive Funktion, die die naechste Vokalkette sucht und die Anzahl ihrer Silben bestimmt.
+
+            if charList == []:
+                    return 0
+            c, v = 0, []
+            while c < len(charList) and charList[c] not in VOWELS_DE:
+                    c += 1
+            while c < len(charList) and charList[c] in VOWELS_DE:
+                    v.append(charList[c])
+                    c += 1
+            # kein Vokal: keine Silbe
+            if v == []:
+                    return 0
+            # ein Vokal: eine Silbe
+            elif len(v) == 1:
+                    return 1 + __sylCount(charList[c:])
+            # zwei Vokale: eine oder zwei Silben
+            elif len(v) >= 2:
+                    if "".join(v[:2]) in ONE_SYLLABLE_COMBINATIONS:
+                            return 1 + __sylCount(charList[c-len(v)+2:])
+                    else:
+                            return 1 + __sylCount(charList[c-len(v)+1:])
+
+    # Wort in Unicode umwandeln
+    try:
+            word = word
+    except UnicodeEncodeError as u:
+            pass
+
+    # Ausnahmen abfragen
+    if word in list(SYLLABLE_COUNT_EXCEPTIONS.keys()):
+            return SYLLABLE_COUNT_EXCEPTIONS[word]
+
+    # Sonderzeichen eliminieren
+    if not word.isalnum():
+            word = "".join([w for w in word if w.isalnum() or w in "'`-"]).rstrip("-")
+
+    # Sonderfall: Abkuerzung
+    if word.isupper():
+            return len(word) + word.count("Y") * 2 # "Ypsilon" hat zwei Silben mehr
+    if word[:-1].isupper() and word[-1] == "s": # Plural-Abkuerzung
+            return len(word) - 1 + word.count("Y") * 2
+
+    word = word.lower()
+
+    # Sonderfall: Ziffern am Wortanfang (zB "1920er")
+    m = SYL_DIGITS_REGEXP.match(word)
+    if m != None:
+            return m.end() + countSyllables(word[m.end():])
+
+    # Sonderfall: "y<vokal>" ist eine Silbe -> "y" abschneiden
+    if SYL_Y_REGEXP.match(word):
+            word = word[1:]
+
+    # Sonderfall: "qu<vokal>" ist eine Silbe -> durch "qu" ersetzen
+    word = SYL_QU_REGEXP.sub("qu", word)
+
+    return __sylCount(list(word))

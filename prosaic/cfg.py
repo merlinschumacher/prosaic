@@ -24,3 +24,4 @@ DEFAULT_TEMPLATE = 'haiku'
 DEFAULT_TEMPLATE_EXT = 'json'
 TEMPLATES = join(PROSAIC_HOME, 'templates')
 EXAMPLE_TEMPLATE = join(TEMPLATES, '.example.template')
+LANGUAGE = 'german'
